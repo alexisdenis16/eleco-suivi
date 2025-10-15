@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ELECO Suivi v3.3.1 — Client</title>
+<link rel="preconnect" href="https://cdn.jsdelivr.net" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f8f9fb; --card:#ffffff; --line:#e5e7eb; --text:#111; --muted:#6b7280;
+    --yellow:#FFD22C; --black:#111; --gray:#9ca3af; --shadow:0 10px 30px rgba(0,0,0,.08);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:Inter,system-ui,Segoe UI,Roboto;background:var(--bg);color:var(--text);}
+  .wrap{max-width:1100px;margin:24px auto;padding:0 12px;}
+  header{display:flex;align-items:center;gap:14px;margin-bottom:12px;}
+  header img{width:72px;height:72px;object-fit:contain;border-radius:12px;border:1px solid var(--line);background:#fff;}
+  h1{margin:0;font-size:1.7rem;}
+  .subtitle{color:var(--muted);font-size:.95rem;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow);margin:12px 0;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;}
+  .row>label{display:flex;flex-direction:column;gap:6px;min-width:200px;flex:1;}
+  input,select,button{border:1px solid var(--line);border-radius:12px;padding:10px 12px;background:#fff;color:var(--text);outline:none;}
+  input:focus,select:focus{border-color:#d1d5db;box-shadow:0 0 0 3px rgba(255,210,44,.25);}
+  button{cursor:pointer;font-weight:700;box-shadow:var(--shadow);}
+  .primary{background:var(--yellow);border-color:#facc15;}
+  .ghost{background:#fff;}
+  .danger{background:#fff;border-color:#ef4444;color:#b91c1c;}
+  table{width:100%;border-collapse:separate;border-spacing:0 10px;}
+  th{font-weight:700;text-align:center;color:#374151;padding:6px;}
+  td{padding:0 6px;}
+  .rowTr{background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);}
+  .rowTr td:first-child{border-top-left-radius:14px;border-bottom-left-radius:14px;}
+  .rowTr td:last-child{border-top-right-radius:14px;border-bottom-right-radius:14px;}
+  .in{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;background:#fff;}
+  .in.right{text-align:right;}
+  .chip{border:1px solid var(--line);padding:6px 10px;border-radius:999px;background:#fff;margin-right:6px;}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  canvas{width:100%!important;height:420px!important;}
+  .hint{font-size:.85rem;color:var(--muted);}
+  .totline{margin-top:8px;}
+  .seg{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+  .seg label{display:flex;align-items:center;gap:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <img id="logo" src="logo-eleco.png" alt="ELECO"
+         onerror="this.style.display='none';document.getElementById('logoHint').style.display='block';">
+    <div>
+      <h1>ELECO Suivi — Ma consommation</h1>
+      <div class="subtitle">Saisissez vos kWh HP/HC et suivez vos coûts — jour ou mois.</div>
+      <div id="logoHint" class="hint" style="display:none;">Logo non trouvé. Placez “logo-eleco.png” dans le dossier.</div>
+    </div>
+  </header>
+
+  <div class="card">
+    <div class="row">
+      <label>Vue
+        <select id="mode">
+          <option value="month" selected>Mois</option>
+          <option value="day">Jour</option>
+        </select>
+      </label>
+      <label id="monthWrap">Mois
+        <input id="month" type="month">
+      </label>
+      <label id="dayWrap" style="display:none">Date
+        <input id="day" type="date">
+      </label>
+      <label>Fournisseur d’électricité
+        <select id="supplier"></select>
+      </label>
+      <label>HP (€/kWh)
+        <input id="priceHP" type="number" min="0" step="0.001">
+      </label>
+      <label>HC (€/kWh)
+        <input id="priceHC" type="number" min="0" step="0.001">
+      </label>
+    </div>
+
+    <div class="toolbar" style="margin-top:8px">
+      <label>Profil d’appareils
+        <select id="profile">
+          <option value="none" selected>— Choisir —</option>
+          <option value="home">Maison</option>
+          <option value="pro">Professionnel</option>
+          <option value="mix">Mixte</option>
+        </select>
+      </label>
+      <button id="loadProfile" class="ghost">📥 Charger profil</button>
+      <button id="duplicatePrev" class="ghost">📋 Dupliquer période précédente</button>
+      <button id="addRow" class="ghost">＋ Ajouter</button>
+      <button id="clearRows" class="danger">🗑️ Vider</button>
+      <button id="saveBtn" class="ghost">💾 Sauvegarder</button>
+      <button id="exportCSV" class="ghost">📤 Export CSV</button>
+      <button id="exportPDF" class="primary">📄 Export PDF</button>
+      <span class="hint">Tarifs auto selon mois/fournisseur (modifiables).</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th style="text-align:left">Appareil</th><th>HP (kWh)</th><th>HC (kWh)</th><th>Total kWh</th><th>Coût (€)</th><th></th></tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div class="totline">
+      <span class="chip">Total HP: <b id="totHP">0</b> kWh</span>
+      <span class="chip">Total HC: <b id="totHC">0</b> kWh</span>
+      <span class="chip">Total: <b id="totKWh">0</b> kWh</span>
+      <span class="chip">Coût total: <b id="totCost">0,00 €</b></span>
+      <span class="chip">Mix: <b id="mix">—</b></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="seg" style="margin:6px 0 10px">
+      <span class="hint">Portée du graphique :</span>
+      <label><input type="radio" name="range" value="1" checked> 1 mois</label>
+      <label><input type="radio" name="range" value="3"> 3 mois</label>
+      <label><input type="radio" name="range" value="6"> 6 mois</label>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const € = n => (Math.round(n*100)/100).toFixed(2).replace('.',',')+' €';
+  const id = s => document.getElementById(s);
+  const todayISO = new Date().toISOString().slice(0,10);
+  const thisMonth = () => new Date().toISOString().slice(0,7);
+
+  const DEFAULT_TARIFFS = {
+    "EDF": {hp:0.227, hc:0.182}, "Engie": {hp:0.235, hc:0.190}, "TotalEnergies": {hp:0.233, hc:0.188},
+    "Ohm Énergie": {hp:0.230, hc:0.190}, "Eni": {hp:0.236, hc:0.192}, "Vattenfall": {hp:0.234, hc:0.189},
+    "ekWateur": {hp:0.239, hc:0.195}, "Mint Énergie": {hp:0.232, hc:0.189}, "Enercoop": {hp:0.245, hc:0.200},
+    "ilek": {hp:0.241, hc:0.196}, "Planète Oui": {hp:0.238, hc:0.194}
+  };
+  const PROFILES = {
+    home:["Réfrigérateur","Congélateur","Lave-linge","Lave-vaisselle","Sèche-linge","Ballon ECS","TV","Box Internet","Éclairage"],
+    pro:["Compresseur","Éclairage atelier","PC/Imprimante","Pont élévateur","Chargeur chariot","PAC bureau","Frigo/Fontaine"],
+    get mix(){return [...this.home,...this.pro];}
+  };
+
+  const mode=id('mode'),month=id('month'),day=id('day'),supplier=id('supplier'),
+        priceHP=id('priceHP'),priceHC=id('priceHC'),profile=id('profile'),tbody=id('tbody'),chartEl=id('chart');
+
+  supplier.innerHTML = Object.keys(DEFAULT_TARIFFS).map(n=>`<option>${n}</option>`).join('');
+  supplier.value="EDF";
+
+  function syncPeriodInputs(){
+    id('monthWrap').style.display=(mode.value==='month'?'block':'none');
+    id('dayWrap').style.display=(mode.value==='day'?'block':'none');
+  }
+  month.value=thisMonth();day.value=todayISO;syncPeriodInputs();
+
+  function refreshTariffs(){
+    const sup=supplier.value, m=DEFAULT_TARIFFS[sup];
+    if(!m)return;priceHP.value=m.hp.toFixed(3);priceHC.value=m.hc.toFixed(3);
+  }
+
+  const periodKey=()=>`eleco_v3:${mode.value}:${mode.value==='month'?month.value:day.value}`;
+  function save(){
+    const data=[...tbody.querySelectorAll('tr')].map(tr=>({
+      name:tr.querySelector('.name').value.trim(),
+      hp:+tr.querySelector('.hp').value||0,
+      hc:+tr.querySelector('.hc').value||0
+    }));
+    const payload={supplier:supplier.value,hpPrice:+priceHP.value,hcPrice:+priceHC.value,data};
+    localStorage.setItem(periodKey(),JSON.stringify(payload));
+  }
+  function load(){
+    const raw=localStorage.getItem(periodKey());
+    tbody.innerHTML='';
+    if(raw){
+      const o=JSON.parse(raw);
+      supplier.value=o.supplier||supplier.value;
+      priceHP.value=(o.hpPrice??DEFAULT_TARIFFS[supplier.value].hp).toFixed(3);
+      priceHC.value=(o.hcPrice??DEFAULT_TARIFFS[supplier.value].hc).toFixed(3);
+      (o.data||[]).forEach(d=>tbody.appendChild(row(d)));
+    }else tbody.appendChild(row({}));
+  }
+
+  function row(o={name:'',hp:'',hc:''}){
+    const tr=document.createElement('tr');
+    tr.className='rowTr';
+    tr.innerHTML=`<td><input class="in name" placeholder="Nom" value="${o.name||''}"></td>
+    <td><input class="in right hp" type="number" step="0.1" min="0" value="${o.hp||''}"></td>
+    <td><input class="in right hc" type="number" step="0.1" min="0" value="${o.hc||''}"></td>
+    <td style="text-align:right"><span class="totkwh">0.0</span></td>
+    <td style="text-align:right"><span class="cost">0,00 €</span></td>
+    <td><button class="danger del">✕</button></td>`;
+    tr.addEventListener('input',calc);
+    tr.querySelector('.del').onclick=()=>{tr.remove();calc();save();};
+    return tr;
+  }
+
+  function loadProfileList(){
+    const val=profile.value;
+    if(val==='none')return;
+    const list=(val==='home')?PROFILES.home:(val==='pro')?PROFILES.pro:PROFILES.mix;
+    tbody.innerHTML='';list.forEach(n=>tbody.appendChild(row({name:n})));calc();
+  }
+
+  function calc(){
+    const hpP=+priceHP.value||0,hcP=+priceHC.value||0;
+    let tHP=0,tHC=0,t€=0;
+    [...tbody.querySelectorAll('tr')].forEach(tr=>{
+      const hp=+tr.querySelector('.hp').value||0,hc=+tr.querySelector('.hc').value||0;
+      const k=hp+hc,c=hp*hpP+hc*hcP;
+      tr.querySelector('.totkwh').textContent=k.toFixed(1);
+      tr.querySelector('.cost').textContent=€(c);
+      tHP+=hp;tHC+=hc;t€+=c;
+    });
+    id('totHP').textContent=tHP.toFixed(1);
+    id('totHC').textContent=tHC.toFixed(1);
+    id('totKWh').textContent=(tHP+tHC).toFixed(1);
+    id('totCost').textContent=€(t€);
+    id('mix').textContent=(tHP+tHC>0)?`${Math.round(tHP/(tHP+tHC)*100)}% HP / ${100-Math.round(tHP/(tHP+tHC)*100)}% HC`:'—';
+    save();
+  }
+
+  id('loadProfile').onclick=()=>setTimeout(loadProfileList,50);
+  id('addRow').onclick=()=>{tbody.appendChild(row({}));calc();};
+  id('clearRows').onclick=()=>{if(confirm('Vider la liste ?')){tbody.innerHTML='';calc();}};
+  id('saveBtn').onclick=save;
+  supplier.onchange=()=>{refreshTariffs();calc();};
+  mode.onchange=()=>{setTimeout(()=>{syncPeriodInputs();load();refreshTariffs();calc();},100);};
+  month.onchange=()=>{setTimeout(()=>{load();calc();},50);};
+  day.onchange=()=>{setTimeout(()=>{load();calc();},50);};
+  priceHP.oninput=priceHC.oninput=calc;
+
+  supplier.value="EDF";refreshTariffs();load();calc();
+});
+</script>
+</body>
+</html>
